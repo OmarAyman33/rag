@@ -6,9 +6,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import wikipediaapi
 
-INPUT_ROOT = "/home/omar/spectech/RAG/input"
-START_TITLE = "Egypt"
-TARGET_COUNT = 300
+INPUT_ROOT = "C:/Users/omara/Desktop/RAG/learning-rag/input"
+START_TITLE = "Iron Man"
+TARGET_COUNT = 1000
 MAX_WORKERS = 10  # keep modest; Wikipedia's API rate-limits aggressive parallel clients
 
 # Link namespaces to skip -- these aren't real articles

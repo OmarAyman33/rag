@@ -6,8 +6,8 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import chromadb
 
-INPUT_ROOT = Path("/home/omar/spectech/RAG/input")
-OUTPUT_ROOT = Path("/home/omar/spectech/RAG/output")
+INPUT_ROOT = Path("C:/Users/omara/Desktop/RAG/learning-rag/input")
+OUTPUT_ROOT = Path("C:/Users/omara/Desktop/RAG/learning-rag/output")
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
 model = SentenceTransformer("google/embeddinggemma-300m")
@@ -42,7 +42,7 @@ for document_path in Path.iterdir(Path(INPUT_ROOT)):
             if already_ingested(document_path):
                 continue
 
-            document = document_path.read_text()
+            document = document_path.read_text(encoding="utf-8", errors="ignore")
             chunks = to_chunks(document)
             if not chunks:
                 continue

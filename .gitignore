@@ -10,6 +10,7 @@ frames_*.gv
 frames_*.pdf
 .vscode
 .claude
+.env
 input/*.txt
 input/*.md
 output/*
