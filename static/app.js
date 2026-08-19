@@ -4,6 +4,8 @@ const inputEl = document.getElementById("input");
 const sendBtn = document.getElementById("send");
 const newChatBtn = document.getElementById("new-chat-btn");
 const chatListEl = document.getElementById("chat-list");
+const uploadBtn = document.getElementById("upload-btn");
+const fileInputEl = document.getElementById("file-input");
 
 const STORAGE_KEY = "rag_chats";
 const VIEWPORT_MARGIN = 10;
@@ -102,6 +104,30 @@ function startNewChat() {
 }
 
 newChatBtn.addEventListener("click", startNewChat);
+
+function showToast(message) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  requestAnimationFrame(() => toast.classList.add("visible"));
+  setTimeout(() => {
+    toast.classList.remove("visible");
+    setTimeout(() => toast.remove(), 200);
+  }, 3000);
+}
+
+function handleFileSelection(files) {
+  if (!files.length) return;
+  const names = files.map((f) => f.name).join(", ");
+  showToast(`Selected ${files.length} file${files.length > 1 ? "s" : ""}: ${names} — upload isn't wired up yet.`);
+}
+
+uploadBtn.addEventListener("click", () => fileInputEl.click());
+fileInputEl.addEventListener("change", () => {
+  handleFileSelection([...fileInputEl.files]);
+  fileInputEl.value = "";
+});
 
 function escapeHtml(str) {
   return str

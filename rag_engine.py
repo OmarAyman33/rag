@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Iterator
 
 import chromadb
@@ -6,22 +5,37 @@ from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from guardrails.config import load_settings
+from guardrails.similarity import RetrievedChunk, filter_by_threshold
+from guardrails.max_snippets import cap_snippets
+from guardrails.scope import decide_scope, DEFAULT_REFUSAL
+from guardrails.pii import pii_filter_output
+from guardrails.verification import verify_answer, rebuild_from_supported, VerificationError
+
 load_dotenv()
 
-OUTPUT_ROOT = Path("C:/Users/omara/Desktop/RAG/learning-rag/output")
-CHROMA_DB_PATH = OUTPUT_ROOT / "chroma_db"
-COLLECTION_NAME = "legal_docs"
+settings = load_settings()
+
+CHROMA_DB_PATH = settings.chroma_path
+COLLECTION_NAME = settings.collection_name
 
 
+# Hardened generation prompt (G4): knowledge boundary + authorized abstention
+# + mandatory citations + confidence penalization.
 SYSTEM_PROMPT = """You are a retrieval-augmented assistant. Answer the user's \
 question using ONLY the numbered context passages provided below.
 
 Rules:
-- If the answer isn't contained in the context, say so plainly. Do not guess \
-or use outside knowledge.
+- You have no other knowledge. The ONLY source of information is the context.
+- If the answer isn't contained in the context, say exactly:
+  "I don't know - this is not in your documents." Do not guess or use outside \
+knowledge.
 - When you use a passage, cite it inline like [1], [2], etc., matching the \
 passage numbers below.
+- Every factual statement must be supported by a cited passage. A statement \
+without a citation is forbidden.
 - Be concise. Don't repeat the passages verbatim; synthesize the answer.
+- If you are not certain the context supports a claim, omit it.
 """
 
 SPLIT_SYSTEM_PROMPT = """You break a user's question down into simple, atomic \
@@ -39,7 +53,7 @@ commentary.
 the only line.
 """
 
-model = SentenceTransformer("google/embeddinggemma-300m")
+model = SentenceTransformer(settings.embed_model)
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
 collection = chroma_client.get_collection(COLLECTION_NAME)
 
@@ -52,7 +66,7 @@ def run_rag_query(query: str) -> Iterator[dict]:
     """
     try:
         split_response = client.responses.create(
-            model="gpt-5.6-luna",
+            model=settings.llm_model,
             instructions=SPLIT_SYSTEM_PROMPT,
             input=query,
         )
@@ -75,7 +89,7 @@ def run_rag_query(query: str) -> Iterator[dict]:
             atomic_embedding = model.encode_query(atomic_question).tolist()
             results = collection.query(
                 query_embeddings=[atomic_embedding],
-                n_results=5,
+                n_results=settings.n_query,
             )
             for chunk_id, doc, meta, dist in zip(
                 results["ids"][0],
@@ -118,12 +132,30 @@ def run_rag_query(query: str) -> Iterator[dict]:
             },
         }
 
+        # G1: drop chunks below the similarity threshold, sorted best-first.
+        retrieved = [
+            RetrievedChunk(id=chunk_id, text=chunk["doc"], distance=chunk["dist"], metadata=chunk["meta"])
+            for chunk_id, chunk in merged_chunks.items()
+        ]
+        retrieved.sort(key=lambda c: c.similarity, reverse=True)
+        filtered = filter_by_threshold(retrieved, settings.similarity_threshold)
+
+        # G3: refuse outright (no LLM call) if nothing survives the threshold.
+        scope = decide_scope(filtered, settings.similarity_threshold)
+        if scope.refused:
+            yield {"type": "answer_delta", "text": DEFAULT_REFUSAL}
+            yield {"type": "done"}
+            return
+
+        # G2: cap how many chunks are sent to the LLM.
+        capped = cap_snippets(scope.chunks, settings.max_snippets)
+
         # Build a clearly-structured, numbered context block instead of one blob of text
         context_blocks = []
-        for chunk_id, chunk in merged_chunks.items():
-            meta = chunk["meta"]
+        for chunk in capped:
+            meta = chunk.metadata
             context_blocks.append(
-                f"[{chunk_numbers[chunk_id]}] (source: {meta['source']}, chunk {meta['chunk_index']})\n{chunk['doc']}"
+                f"[{chunk_numbers[chunk.id]}] (source: {meta['source']}, chunk {meta['chunk_index']})\n{chunk.text}"
             )
 
         context = "\n\n".join(context_blocks)
@@ -133,15 +165,43 @@ def run_rag_query(query: str) -> Iterator[dict]:
 
 Question: {query}"""
 
-        stream = client.responses.create(
-            model="gpt-5.6-luna",
+        # Generate the full answer first (not streamed) so it can be verified
+        # and PII-redacted before anything reaches the client.
+        response = client.responses.create(
+            model=settings.llm_model,
             instructions=SYSTEM_PROMPT,
             input=user_prompt,
-            stream=True,
         )
-        for event in stream:
-            if event.type == "response.output_text.delta":
-                yield {"type": "answer_delta", "text": event.delta}
+        answer = response.output_text
+
+        # G5: verify every claim in the answer against the retrieved context;
+        # fail closed (refuse) if the judge can't be parsed or nothing survives.
+        if settings.run_verification:
+            try:
+                verdict = verify_answer(client, settings, answer, context)
+            except VerificationError:
+                yield {"type": "answer_delta", "text": DEFAULT_REFUSAL}
+                yield {"type": "done"}
+                return
+
+            if not verdict.fully_grounded:
+                rebuilt = rebuild_from_supported(verdict)
+                if rebuilt is None:
+                    yield {"type": "answer_delta", "text": DEFAULT_REFUSAL}
+                    yield {"type": "done"}
+                    return
+                answer = rebuilt
+
+        # P: redact any personal information before the answer is shown.
+        if settings.run_output_pii:
+            answer, _pii_hits = pii_filter_output(answer, settings.pii_mode, settings.redact_placeholder)
+
+        # Stream the final, safe answer word-by-word so the UI's incremental
+        # rendering keeps working unchanged.
+        words = answer.split(" ")
+        for i, word in enumerate(words):
+            text = word if i == len(words) - 1 else word + " "
+            yield {"type": "answer_delta", "text": text}
 
         yield {"type": "done"}
     except Exception as exc:

@@ -6,14 +6,19 @@ from sentence_transformers import SentenceTransformer
 import numpy as np
 import chromadb
 
-INPUT_ROOT = Path("C:/Users/omara/Desktop/RAG/learning-rag/input")
-OUTPUT_ROOT = Path("C:/Users/omara/Desktop/RAG/learning-rag/output")
+from guardrails.config import load_settings
+from guardrails.pii import classify_chunk
+
+settings = load_settings()
+
+INPUT_ROOT = settings.input_dir
+OUTPUT_ROOT = settings.chroma_path.parent
 
 text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=100)
-model = SentenceTransformer("google/embeddinggemma-300m")
+model = SentenceTransformer(settings.embed_model)
 
-CHROMA_DB_PATH = OUTPUT_ROOT / "chroma_db"
-DB_NAME = "legal_docs"
+CHROMA_DB_PATH = settings.chroma_path
+DB_NAME = settings.collection_name
 
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
 collection = chroma_client.get_or_create_collection(
@@ -43,23 +48,44 @@ for document_path in Path.iterdir(Path(INPUT_ROOT)):
                 continue
 
             document = document_path.read_text(encoding="utf-8", errors="ignore")
-            chunks = to_chunks(document)
-            if not chunks:
+            raw_chunks = to_chunks(document)
+            if not raw_chunks:
                 continue
-        
+
+            # P: gate every chunk for personal information before it is
+            # embedded/stored (block | redact | report, per RAG_PII_MODE).
+            chunks = []
+            blocked = 0
+            redacted = 0
+            for chunk in raw_chunks:
+                classification = classify_chunk(chunk, settings.pii_mode)
+                if classification.action == "block":
+                    blocked += 1
+                    continue
+                if classification.action == "redact":
+                    redacted += 1
+                    chunks.append(classification.redacted_text)
+                else:
+                    chunks.append(chunk)
+
+            if not chunks:
+                print(f"Skipped {document_path.name}: all {len(raw_chunks)} chunks blocked by PII gate")
+                continue
+
             embeddings = to_embeddings(chunks)
-        
+
             ids = [f"{document_path.stem}_chunk_{i}" for i in range(1, len(chunks) + 1)]
             metadatas = [
                 {"source": document_path.name, "chunk_index": i}
                 for i in range(1, len(chunks) + 1)
             ]
-        
+
             collection.add(
                 ids=ids,
                 documents=chunks,
                 embeddings=embeddings,
                 metadatas=metadatas,
             )
-        
-            print(f"Ingested {document_path.name}: {len(chunks)} chunks")
+
+            pii_note = f" ({blocked} blocked, {redacted} redacted)" if blocked or redacted else ""
+            print(f"Ingested {document_path.name}: {len(chunks)} chunks{pii_note}")
