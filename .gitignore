@@ -1,4 +1,3 @@
-# --- original learning-rag ignores (preserved) ---
 build/
 install/
 log/
@@ -15,18 +14,3 @@ frames_*.pdf
 input/*.txt
 input/*.md
 output/*
-
-# --- guardrails-layer additions ---
-*.py[cod]
-.venv/
-venv/
-output/
-input/*.pdf
-chroma_db/
-.env
-.pytest_cache/
-.coverage
-htmlcov/
-.DS_Store
-Thumbs.db
-.idea/
