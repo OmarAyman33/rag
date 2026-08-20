@@ -117,10 +117,28 @@ function showToast(message) {
   }, 3000);
 }
 
-function handleFileSelection(files) {
+async function handleFileSelection(files) {
   if (!files.length) return;
-  const names = files.map((f) => f.name).join(", ");
-  showToast(`Selected ${files.length} file${files.length > 1 ? "s" : ""}: ${names} — upload isn't wired up yet.`);
+  uploadBtn.disabled = true;
+  showToast(`Ingesting ${files.length} file${files.length > 1 ? "s" : ""}…`);
+  try {
+    const formData = new FormData();
+    for (const f of files) formData.append("files", f);
+    const res = await fetch("/api/ingest", { method: "POST", body: formData });
+    const data = await res.json();
+    const summary = data.results
+      .map((r) =>
+        r.status === "ingested"
+          ? `${r.source}: ${r.chunks} chunks`
+          : `${r.source}: ${r.status}${r.reason ? " — " + r.reason : ""}`
+      )
+      .join("; ");
+    showToast(summary || "Upload finished.");
+  } catch (err) {
+    showToast("Upload failed: " + err.message);
+  } finally {
+    uploadBtn.disabled = false;
+  }
 }
 
 uploadBtn.addEventListener("click", () => fileInputEl.click());

@@ -53,7 +53,8 @@ commentary.
 the only line.
 """
 
-model = SentenceTransformer(settings.embed_model)
+# device="cpu": the GPU is reserved for the Chandra OCR vLLM server.
+model = SentenceTransformer(settings.embed_model, device="cpu")
 chroma_client = chromadb.PersistentClient(path=str(CHROMA_DB_PATH))
 collection = chroma_client.get_collection(COLLECTION_NAME)
 
