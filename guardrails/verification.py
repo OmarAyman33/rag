@@ -101,7 +101,6 @@ def _call_judge(client, model: str, system: str, user: str, max_tokens: int) -> 
         instructions=system,
         input=user,
         max_output_tokens=max_tokens,
-        temperature=0.0,
     )
     return response.output_text
 

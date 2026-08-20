@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Assistant</title>
+<link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <button type="button" id="new-chat-btn" class="new-chat-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+        </svg>
+        New chat
+      </button>
+      <div class="sidebar-section-label">Chats</div>
+      <nav id="chat-list" class="chat-list"></nav>
+    </aside>
+
+    <div class="app">
+      <header class="app-header">
+        <span class="app-title">Assistant</span>
+        <button type="button" id="upload-btn" class="upload-btn">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M12 16V4M12 4L7 9M12 4l5 5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Upload documents
+        </button>
+        <input type="file" id="file-input" multiple accept=".txt,.md,.pdf" style="display:none" />
+      </header>
+
+      <main id="messages" class="messages"></main>
+
+      <form id="composer" class="composer">
+        <textarea
+          id="input"
+          class="composer-input"
+          placeholder="Ask anything..."
+          rows="1"
+          autofocus
+        ></textarea>
+        <button type="submit" id="send" class="send-btn" aria-label="Send">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+            <path d="M12 19V5M12 5L5 12M12 5l7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
