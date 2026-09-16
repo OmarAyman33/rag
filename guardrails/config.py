@@ -32,7 +32,7 @@ class Settings:
     embed_model: str = DEFAULT_EMBED_MODEL
     chroma_path: Path = DEFAULT_CHROMA_PATH
     collection_name: str = DEFAULT_COLLECTION
-    n_query: int = 20                   # oversample before threshold + cap
+    n_query: int = 5                    # chunks retrieved per atomic question
 
     # --- Prompt / generation ---
     temperature: float = 0.0

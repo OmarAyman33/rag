@@ -26,7 +26,12 @@ from .config import Settings
 _EXTRACT_PROMPT = """You are a strict fact-checking judge.
 Break the assistant answer below into a list of ATOMIC, standalone factual claims.
 Each claim must express exactly ONE assertion, with pronouns resolved.
-Return ONLY a JSON object of the form {{"claims": ["claim 1", "claim 2", ...]}}.
+The answer contains inline citation markers like [1], [2]. Each claim MUST \
+keep the citation marker(s) that supported it in the original answer, \
+appended verbatim at the end of the claim (e.g. "The sky is blue [1].").
+If a sentence in the answer has no citation marker, extract the claim \
+without one.
+Return ONLY a JSON object of the form {{"claims": ["claim 1 [1]", "claim 2 [2]", ...]}}.
 Do not add anything outside the JSON.
 
 ANSWER:
@@ -37,6 +42,12 @@ _VERIFY_PROMPT = """You are a strict fact-checking judge.
 For each claim, decide whether it can be DIRECTLY inferred from the provided
 context passages. A claim is supported ONLY if the context explicitly states
 it. If the context is silent or contradicts the claim, it is NOT supported.
+
+Exception: a claim that says certain information is NOT present, not covered,
+or not mentioned in the documents (an absence/gap claim) IS supported as long
+as the context does not actually contain that information - since its whole
+point is to describe what's missing.
+
 Return ONLY a JSON object of the form:
 {{"verdicts": [{{"claim": "...", "supported": true|false}}, ...]}}
 
@@ -168,10 +179,19 @@ def verify_answer(
 
 
 def rebuild_from_supported(verdict: Verdict) -> str | None:
-    """Reconstruct an answer from only the supported claims.
+    """Reconstruct an answer from only the supported claims, as flowing prose
+    (not a bullet list) with each claim's original citation marker intact.
 
     Returns None when nothing is supported -> caller must refuse.
     """
     if not verdict.supported:
         return None
-    return "\n".join(f"- {c}" for c in verdict.supported)
+    sentences = []
+    for c in verdict.supported:
+        c = c.strip()
+        if not c:
+            continue
+        if not c.endswith((".", "!", "?")):
+            c += "."
+        sentences.append(c)
+    return " ".join(sentences)

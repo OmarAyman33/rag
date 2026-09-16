@@ -27,15 +27,28 @@ question using ONLY the numbered context passages provided below.
 
 Rules:
 - You have no other knowledge. The ONLY source of information is the context.
-- If the answer isn't contained in the context, say exactly:
-  "I don't know - this is not in your documents." Do not guess or use outside \
-knowledge.
-- When you use a passage, cite it inline like [1], [2], etc., matching the \
-passage numbers below.
-- Every factual statement must be supported by a cited passage. A statement \
-without a citation is forbidden.
+- Write in natural, flowing prose (full sentences and paragraphs). Do not \
+default to bullet points or lists; only use them if the question is \
+genuinely asking for a list of items.
+- Every factual statement must be followed by an inline citation like [1] or \
+[2], matching the passage numbers below. A statement without a citation is \
+forbidden.
 - Be concise. Don't repeat the passages verbatim; synthesize the answer.
-- If you are not certain the context supports a claim, omit it.
+- The context may only partially answer the question, or may answer some \
+parts and not others. Explicitly say, in plain language, which parts of the \
+question you cannot answer from the context - don't silently drop them or \
+gloss over the gap.
+- If a "Sub-questions" list is given below, it shows how the question was \
+broken down for retrieval, with any sub-question that returned no supporting \
+passages marked "(NO SUPPORTING PASSAGES FOUND)". Answer the ones you can, \
+and for each marked one, explicitly say that part isn't covered by the \
+documents - name what it was asking, in your own words, so the user knows \
+exactly what's missing.
+- If none of the context supports an answer, say exactly:
+  "I don't know - this is not in your documents." Do not guess or use \
+outside knowledge.
+- If you are not certain the context supports a claim, omit it rather than \
+guessing.
 """
 
 SPLIT_SYSTEM_PROMPT = """You break a user's question down into simple, atomic \
@@ -161,9 +174,22 @@ def run_rag_query(query: str) -> Iterator[dict]:
 
         context = "\n\n".join(context_blocks)
 
+        # Tell the model which atomic sub-questions ended up with no
+        # surviving evidence (post threshold + cap), so it can call out
+        # exactly what it can't answer instead of silently dropping it.
+        subquestion_section = ""
+        if len(atomic_questions) > 1:
+            capped_ids = {chunk.id for chunk in capped}
+            subquestion_lines = []
+            for q in atomic_questions:
+                covered = any(cid in capped_ids for cid in chunks_by_question[q])
+                marker = "" if covered else " (NO SUPPORTING PASSAGES FOUND)"
+                subquestion_lines.append(f"- {q}{marker}")
+            subquestion_section = "\nSub-questions:\n" + "\n".join(subquestion_lines) + "\n"
+
         user_prompt = f"""Context passages:
 {context}
-
+{subquestion_section}
 Question: {query}"""
 
         # Generate the full answer first (not streamed) so it can be verified
